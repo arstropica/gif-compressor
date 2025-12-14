@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  gif-compressor:
+    build: .
+    container_name: gif-compressor
+    ports:
+      - "5050:5050"
+    environment:
+      - PORT=5050
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/output
+      - DATABASE_PATH=/app/data/gif-compressor.db
+      - GIF_RETENTION_TTL=${GIF_RETENTION_TTL:-}
+      - DEFAULT_CONCURRENCY=${DEFAULT_CONCURRENCY:-2}
+      - MAX_CONCURRENCY=${MAX_CONCURRENCY:-10}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-104857600}
+    volumes:
+      - gif-uploads:/app/uploads
+      - gif-output:/app/output
+      - gif-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5050/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: gif-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - gif-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  gif-uploads:
+  gif-output:
+  gif-data:
+  gif-redis-data:
