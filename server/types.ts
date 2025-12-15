@@ -1,4 +1,9 @@
-export type JobStatus = "queued" | "processing" | "completed" | "failed";
+export type JobStatus =
+  | "queued"
+  | "uploading"
+  | "processing"
+  | "completed"
+  | "failed";
 
 export interface CompressionOptions {
   compression_level: number;

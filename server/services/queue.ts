@@ -3,7 +3,7 @@ import PQueue from "p-queue";
 
 import { compressGif, getGifInfo } from "./compression.js";
 import * as db from "../db/client.js";
-import type { JobStatusUpdate } from "../types.js";
+import type { JobStatus, JobStatusUpdate } from "../types.js";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379/0";
 const DEFAULT_CONCURRENCY = parseInt(
@@ -62,7 +62,7 @@ class CompressionQueue {
     // Update status to processing
     const now = new Date().toISOString();
     db.updateJob(jobId, { status: "processing", started_at: now });
-    await this.publishUpdate(jobId, { status: "processing", progress: 0 });
+    await this._publishUpdate(jobId, { status: "processing", progress: 0 });
     await this.publishQueueUpdate();
 
     try {
@@ -85,8 +85,12 @@ class CompressionQueue {
         job.original_path,
         job.options,
         async (progress) => {
-          db.updateJob(jobId, { progress });
-          await this.publishUpdate(jobId, { status: "processing", progress });
+          const totalProgress = this.getTotalProgress(progress, "processing");
+          db.updateJob(jobId, { progress: totalProgress });
+          await this._publishUpdate(jobId, {
+            status: "processing",
+            progress,
+          });
         },
       );
 
@@ -115,7 +119,7 @@ class CompressionQueue {
         expires_at: expiresAt,
       });
 
-      await this.publishUpdate(jobId, {
+      await this._publishUpdate(jobId, {
         status: "completed",
         progress: 100,
         compressed_size: result.size,
@@ -138,7 +142,7 @@ class CompressionQueue {
         completed_at: new Date().toISOString(),
       });
 
-      await this.publishUpdate(jobId, {
+      await this._publishUpdate(jobId, {
         status: "failed",
         progress: 0,
         error_message: errorMessage,
@@ -148,7 +152,24 @@ class CompressionQueue {
     await this.publishQueueUpdate();
   }
 
-  private async publishUpdate(
+  private getTotalProgress(progress: number, status: JobStatus): number {
+    switch (status) {
+      case "queued":
+        return 0;
+      case "uploading":
+        return progress / 4; // Scale to 0-25%
+      case "processing":
+        return 25 + (progress / 100) * 65; // Scale to 25-90%
+      case "completed":
+        return 100;
+      case "failed":
+        return 0;
+      default:
+        return progress;
+    }
+  }
+
+  private async _publishUpdate(
     jobId: string,
     data: JobStatusUpdate,
   ): Promise<void> {
@@ -166,6 +187,15 @@ class CompressionQueue {
     } catch (err) {
       console.error("[Queue] Failed to publish queue update:", err);
     }
+  }
+
+  async publishUpdate(jobId: string, data: JobStatusUpdate): Promise<void> {
+    const totalProgress = this.getTotalProgress(
+      data.progress || 0,
+      data.status || "processing",
+    );
+    db.updateJob(jobId, { progress: totalProgress });
+    await this._publishUpdate(jobId, data);
   }
 
   async shutdown(): Promise<void> {
