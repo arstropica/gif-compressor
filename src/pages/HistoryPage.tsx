@@ -7,11 +7,16 @@ export function HistoryPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Compression History</h1>
           <p className="text-muted-foreground">
-            View and manage your compression jobs
+            View and manage your completed compression jobs
           </p>
         </div>
 
-        <JobList />
+        <JobList
+          statusFilter={["completed", "failed"]}
+          showFilters={true}
+          showBulkActions={true}
+          emptyMessage="No completed jobs yet. Start by compressing some GIFs!"
+        />
       </div>
     </div>
   );
