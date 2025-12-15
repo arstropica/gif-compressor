@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useCallback } from "react";
 
-import type { WSMessage } from "@/api/types";
+import type { WSMessage, JobStatusUpdate } from "@/api/types";
+import { useJobStore } from "@/store/jobStore";
 
 import { jobsKeys } from "./useJobs";
 
@@ -11,6 +12,7 @@ const PING_INTERVAL = 30000;
 
 export function useWebSocket() {
   const queryClient = useQueryClient();
+  const updateJobFromWS = useJobStore((state) => state.updateJobFromWS);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -44,19 +46,29 @@ export function useWebSocket() {
             break;
 
           case "JOB_STATUS_UPDATE":
-            if (message.jobId) {
-              // Invalidate specific job query
-              queryClient.invalidateQueries({
-                queryKey: jobsKeys.detail(message.jobId),
-              });
-              // Invalidate job lists to update progress
-              queryClient.invalidateQueries({
-                queryKey: jobsKeys.lists(),
-              });
-              // Update counts
-              queryClient.invalidateQueries({
-                queryKey: jobsKeys.counts(),
-              });
+            if (message.jobId && message.data) {
+              const update = message.data as JobStatusUpdate;
+
+              // Update the job store directly for real-time progress
+              updateJobFromWS(message.jobId, update);
+
+              // Only invalidate queries for status changes (not progress updates)
+              // This refreshes the full job data when status actually changes
+              if (
+                update.status === "completed" ||
+                update.status === "failed" ||
+                update.status === "queued"
+              ) {
+                queryClient.invalidateQueries({
+                  queryKey: jobsKeys.detail(message.jobId),
+                });
+                queryClient.invalidateQueries({
+                  queryKey: jobsKeys.lists(),
+                });
+                queryClient.invalidateQueries({
+                  queryKey: jobsKeys.counts(),
+                });
+              }
             }
             break;
 
@@ -99,7 +111,7 @@ export function useWebSocket() {
     };
 
     wsRef.current = ws;
-  }, [queryClient]);
+  }, [queryClient, updateJobFromWS]);
 
   useEffect(() => {
     connect();

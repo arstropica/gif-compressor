@@ -6,7 +6,11 @@ import {
 } from "@tanstack/react-query";
 
 import * as api from "@/api/client";
-import type { JobFilters, CompressionOptions } from "@/api/types";
+import type {
+  JobFilters,
+  CompressionOptions,
+  BatchCreateRequest,
+} from "@/api/types";
 
 export const jobsKeys = {
   all: ["jobs"] as const,
@@ -114,6 +118,36 @@ export function useSetQueueConcurrency() {
     mutationFn: (concurrency: number) => api.setQueueConcurrency(concurrency),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: jobsKeys.queue() });
+    },
+  });
+}
+
+export function useBatchCreateJobs() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: BatchCreateRequest) => api.createJobsBatch(request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: jobsKeys.all });
+    },
+  });
+}
+
+export function useUploadJobFile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      jobId,
+      file,
+      onProgress,
+    }: {
+      jobId: string;
+      file: File;
+      onProgress?: (progress: number) => void;
+    }) => api.uploadJobFile(jobId, file, onProgress),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: jobsKeys.all });
     },
   });
 }

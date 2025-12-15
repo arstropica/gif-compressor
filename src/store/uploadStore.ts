@@ -16,15 +16,16 @@ interface UploadState {
 
   addFiles: (files: File[]) => void;
   removeFile: (id: string) => void;
-  clearFiles: () => void;
+  clearFiles: (revokeUrls?: boolean) => void;
   setFileOptions: (id: string, options: CompressionOptions | null) => void;
+  getFileOptions: (id: string) => CompressionOptions | null;
   setUploading: (value: boolean) => void;
   toggleSelected: (id: string) => void;
   selectAll: () => void;
   deselectAll: () => void;
 }
 
-export const useUploadStore = create<UploadState>((set) => ({
+export const useUploadStore = create<UploadState>((set, get) => ({
   files: [],
   isUploading: false,
   selectedIds: new Set(),
@@ -58,9 +59,11 @@ export const useUploadStore = create<UploadState>((set) => ({
       };
     }),
 
-  clearFiles: () =>
+  clearFiles: (revokeUrls = true) =>
     set((state) => {
-      state.files.forEach((f) => URL.revokeObjectURL(f.preview));
+      if (revokeUrls) {
+        state.files.forEach((f) => URL.revokeObjectURL(f.preview));
+      }
       return { files: [], selectedIds: new Set() };
     }),
 
@@ -68,6 +71,11 @@ export const useUploadStore = create<UploadState>((set) => ({
     set((state) => ({
       files: state.files.map((f) => (f.id === id ? { ...f, options } : f)),
     })),
+
+  getFileOptions: (id) => {
+    const file = get().files.find((f) => f.id === id);
+    return file?.options ?? null;
+  },
 
   setUploading: (isUploading) => set({ isUploading }),
 

@@ -2,22 +2,51 @@ import { Download, Loader2 } from "lucide-react";
 import { useEffect, useRef, useCallback } from "react";
 
 import { getZipDownloadUrl } from "@/api/client";
+import type { JobStatus } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { useJobs } from "@/hooks/useJobs";
 import { useJobsStore } from "@/store/jobsStore";
+import { useJobStore } from "@/store/jobStore";
 
 import { JobCard } from "./JobCard";
 import { JobFilters } from "./JobFilters";
 
-export function JobList() {
+interface JobListProps {
+  // Filter by session ID (for HomePage - current session jobs)
+  sessionId?: string;
+  // Filter by specific statuses (for HistoryPage - completed/failed only)
+  statusFilter?: JobStatus | JobStatus[];
+  // Show/hide the filter UI
+  showFilters?: boolean;
+  // Show/hide bulk selection controls
+  showBulkActions?: boolean;
+  // Empty state message
+  emptyMessage?: string;
+  // Per page job limit (default 20)
+  perPage?: number;
+}
+
+export function JobList({
+  sessionId,
+  statusFilter: propStatusFilter,
+  showFilters = true,
+  showBulkActions = true,
+  perPage = 20,
+  emptyMessage = "No jobs found. Upload some GIFs to get started!",
+}: JobListProps) {
   const {
-    statusFilter,
+    statusFilter: storeStatusFilter,
     filenameFilter,
     selectedJobIds,
     toggleJobSelected,
     selectAllJobs,
     deselectAllJobs,
   } = useJobsStore();
+
+  const setJobs = useJobStore((state) => state.setJobs);
+
+  // Use prop status filter if provided, otherwise use store filter
+  const effectiveStatusFilter = propStatusFilter ?? storeStatusFilter;
 
   const {
     data,
@@ -27,10 +56,19 @@ export function JobList() {
     isLoading,
     isError,
   } = useJobs({
-    status: statusFilter,
+    status: effectiveStatusFilter,
+    session_id: sessionId,
     filename: filenameFilter || undefined,
-    limit: 20,
+    limit: perPage,
   });
+
+  // Sync fetched jobs to the store for real-time updates
+  useEffect(() => {
+    if (data?.pages) {
+      const allJobs = data.pages.flatMap((page) => page.jobs);
+      setJobs(allJobs);
+    }
+  }, [data, setJobs]);
 
   // Flatten pages into single array
   const jobs = data?.pages.flatMap((page) => page.jobs) || [];
@@ -101,10 +139,10 @@ export function JobList() {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <JobFilters />
+      {showFilters && <JobFilters />}
 
       {/* Bulk actions */}
-      {completedJobs.length > 0 && (
+      {showBulkActions && completedJobs.length > 0 && (
         <div className="flex items-center gap-3 py-2">
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -128,7 +166,7 @@ export function JobList() {
       {/* Job list */}
       {jobs.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          No jobs found. Upload some GIFs to get started!
+          {emptyMessage}
         </div>
       ) : (
         <div className="space-y-3">
@@ -148,14 +186,16 @@ export function JobList() {
       )}
 
       {/* Infinite scroll loader */}
-      <div ref={loaderRef} className="py-4 text-center">
-        {isFetchingNextPage && (
-          <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-        )}
-        {!hasNextPage && jobs.length > 0 && (
-          <p className="text-sm text-muted-foreground">No more jobs</p>
-        )}
-      </div>
+      {perPage > 0 && (
+        <div ref={loaderRef} className="py-4 text-center">
+          {isFetchingNextPage && (
+            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+          )}
+          {!hasNextPage && jobs.length > 0 && (
+            <p className="text-sm text-muted-foreground">No more jobs</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

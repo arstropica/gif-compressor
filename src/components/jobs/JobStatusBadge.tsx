@@ -7,6 +7,8 @@ interface JobStatusBadgeProps {
 
 export function JobStatusBadge({ status }: JobStatusBadgeProps) {
   switch (status) {
+    case "uploading":
+      return <Badge variant="secondary">Uploading</Badge>;
     case "queued":
       return <Badge variant="secondary">Queued</Badge>;
     case "processing":
