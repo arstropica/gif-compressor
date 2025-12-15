@@ -47,3 +47,4 @@ uploads/
 output/
 data/
 *.db
+.claude
