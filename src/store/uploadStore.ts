@@ -1,5 +1,5 @@
+import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
-import "crypto-randomuuid";
 
 import type { CompressionOptions } from "@/api/types";
 
@@ -38,7 +38,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
         ...files
           .filter((f) => f.type === "image/gif")
           .map((file) => ({
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             file,
             preview: URL.createObjectURL(file),
             options: null,
