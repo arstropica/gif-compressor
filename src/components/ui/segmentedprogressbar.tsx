@@ -41,7 +41,7 @@ export const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({
   };
 
   return (
-    <div className={cn("flex h-3 gap-1 bg-track p-1 rounded", className)}>
+    <div className={cn("flex h-4 gap-1 bg-track/10 p-1 rounded", className)}>
       {steps.map((step, idx) => {
         const threshold = Number(step);
         const color = getColorFor(threshold);
@@ -49,8 +49,8 @@ export const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({
         const filledPercent =
           percent !== undefined
             ? Math.min(
-                Math.max((percent - threshold) / widths[idx], 0),
-                widths[idx],
+                Math.max(((percent - threshold) / widths[idx]) * 100, 0),
+                100,
               )
             : 0;
 
@@ -62,7 +62,7 @@ export const SegmentedProgressBar: React.FC<SegmentedProgressBarProps> = ({
           >
             <div
               className={cn(
-                "flex-1 bg-tealBar h-full rounded",
+                "flex-1 bg-tealBar h-full rounded p-1",
                 isFilled ? color : colorClassMap.empty,
               )}
               style={{

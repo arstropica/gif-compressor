@@ -50,7 +50,7 @@ export default {
         redBar: "#ef4444",
         blueBar: "#3b82f6",
         emptyBar: "#334155",
-        track: "#1f2933",
+        track: "rgb(31 41 51 / <alpha-value>)",
       },
       borderRadius: {
         lg: "var(--radius)",
