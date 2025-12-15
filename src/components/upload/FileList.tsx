@@ -1,4 +1,4 @@
-import { Settings, Trash2, X } from "lucide-react";
+import { ArrowRight, Loader2, Settings, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { PerImageSettings } from "@/components/settings/PerImageSettings";
@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatBytes } from "@/lib/utils";
 import { useUploadStore, type PendingFile } from "@/store/uploadStore";
+
+interface FileListProps {
+  onCompress?: () => void;
+  isCompressing?: boolean;
+}
 
 function FileItem({ file }: { file: PendingFile }) {
   const { removeFile } = useUploadStore();
@@ -59,7 +64,7 @@ function FileItem({ file }: { file: PendingFile }) {
   );
 }
 
-export function FileList() {
+export function FileList({ onCompress, isCompressing }: FileListProps) {
   const { files, clearFiles } = useUploadStore();
 
   if (files.length === 0) {
@@ -67,15 +72,16 @@ export function FileList() {
   }
 
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between mb-3">
+    <Card className="overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 pb-3">
         <h3 className="font-medium">
           {files.length} file{files.length !== 1 ? "s" : ""} ready
         </h3>
         <Button
           variant="ghost"
           size="sm"
-          onClick={clearFiles}
+          onClick={() => clearFiles()}
           className="text-destructive hover:text-destructive"
         >
           <Trash2 className="h-4 w-4 mr-1" />
@@ -83,11 +89,38 @@ export function FileList() {
         </Button>
       </div>
 
-      <div className="space-y-2 max-h-[300px] overflow-y-auto">
+      {/* File list */}
+      <div className="space-y-2 max-h-[300px] overflow-y-auto px-4">
         {files.map((file) => (
           <FileItem key={file.id} file={file} />
         ))}
       </div>
+
+      {/* Footer with compress button */}
+      {onCompress && (
+        <div className="flex items-center justify-between p-4 mt-3 border-t bg-muted/30">
+          <span className="text-sm text-muted-foreground">
+            Added {files.length} file{files.length !== 1 ? "s" : ""}
+          </span>
+          <Button
+            onClick={onCompress}
+            disabled={isCompressing}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground px-6"
+          >
+            {isCompressing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Starting...
+              </>
+            ) : (
+              <>
+                Compress GIF
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
