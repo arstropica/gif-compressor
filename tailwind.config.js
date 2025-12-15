@@ -45,6 +45,12 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        tealBar: "#2dd4bf",
+        orangeBar: "#f59e0b",
+        redBar: "#ef4444",
+        blueBar: "#3b82f6",
+        emptyBar: "#334155",
+        track: "#1f2933",
       },
       borderRadius: {
         lg: "var(--radius)",

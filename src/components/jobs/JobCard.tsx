@@ -11,12 +11,12 @@ import { getDownloadUrl, getOriginalUrl } from "@/api/client";
 import type { Job } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { useDeleteJob, useRetryJob } from "@/hooks/useJobs";
 import { formatBytes, formatRelativeTime, formatDimensions } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 import { JobStatusBadge } from "./JobStatusBadge";
+import SegmentedProgressBar from "../ui/segmentedprogressbar";
 
 interface JobCardProps {
   job: Job;
@@ -32,6 +32,7 @@ export function JobCard({ job, selected, onToggleSelect }: JobCardProps) {
   const isActive = job.status === "queued" || job.status === "processing";
   const canDownload = job.status === "completed";
   const canRetry = job.status === "failed";
+  const psegments = { 0: "teal", 25: "orange", 90: "blue" } as const;
 
   return (
     <Card
@@ -69,7 +70,11 @@ export function JobCard({ job, selected, onToggleSelect }: JobCardProps) {
           {/* Progress bar for active jobs */}
           {isActive && (
             <div className="mb-2">
-              <Progress value={job.progress} className="h-2" />
+              <SegmentedProgressBar
+                percent={job.progress}
+                segments={psegments}
+                className="h-2"
+              />
               <p className="text-xs text-muted-foreground mt-1">
                 {job.progress}% complete
               </p>
