@@ -4,6 +4,8 @@ services:
   gif-compressor:
     build: .
     container_name: gif-compressor
+    labels:
+      net.unraid.docker.webui: 'http://[IP]:[PORT:5050]'
     ports:
       - "5050:5050"
     environment:
