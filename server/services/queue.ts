@@ -62,13 +62,17 @@ class CompressionQueue {
     // Update status to processing
     const now = new Date().toISOString();
     db.updateJob(jobId, { status: "processing", started_at: now });
-    await this._publishUpdate(jobId, { status: "processing", progress: 0 });
+    await this._publishUpdate(jobId, { status: "processing", progress: 25 });
     await this.publishQueueUpdate();
 
     try {
       const job = db.getJob(jobId);
       if (!job) {
         throw new Error("Job not found");
+      }
+
+      if (!job.original_path) {
+        throw new Error("Job has no file to process");
       }
 
       // Get original dimensions
@@ -89,7 +93,7 @@ class CompressionQueue {
           db.updateJob(jobId, { progress: totalProgress });
           await this._publishUpdate(jobId, {
             status: "processing",
-            progress,
+            progress: totalProgress,
           });
         },
       );
@@ -159,7 +163,7 @@ class CompressionQueue {
       case "uploading":
         return progress / 4; // Scale to 0-25%
       case "processing":
-        return 25 + (progress / 100) * 65; // Scale to 25-90%
+        return 25 + (progress / 100) * 74; // Scale to 25-99%
       case "completed":
         return 100;
       case "failed":
@@ -195,7 +199,7 @@ class CompressionQueue {
       data.status || "processing",
     );
     db.updateJob(jobId, { progress: totalProgress });
-    await this._publishUpdate(jobId, data);
+    await this._publishUpdate(jobId, { ...data, progress: totalProgress });
   }
 
   async shutdown(): Promise<void> {
