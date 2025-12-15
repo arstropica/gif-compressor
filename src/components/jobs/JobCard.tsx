@@ -5,15 +5,17 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 import { getDownloadUrl, getOriginalUrl } from "@/api/client";
 import type { Job } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useDeleteJob, useRetryJob } from "@/hooks/useJobs";
+import { getPreviewUrl, clearPreviewUrl } from "@/lib/previewCache";
 import { formatBytes, formatRelativeTime, formatDimensions } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { useJob } from "@/store/jobStore";
 
 import { JobStatusBadge } from "./JobStatusBadge";
 import SegmentedProgressBar from "../ui/segmentedprogressbar";
@@ -24,15 +26,58 @@ interface JobCardProps {
   onToggleSelect?: () => void;
 }
 
-export function JobCard({ job, selected, onToggleSelect }: JobCardProps) {
+export function JobCard({
+  job: initialJob,
+  selected,
+  onToggleSelect,
+}: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
   const { mutate: deleteJob, isPending: isDeleting } = useDeleteJob();
   const { mutate: retryJob, isPending: isRetrying } = useRetryJob();
 
-  const isActive = job.status === "queued" || job.status === "processing";
+  // Get real-time job state from store, fall back to initial job
+  const storeJob = useJob(initialJob.id);
+
+  // Merge store state with initial job data
+  const job = useMemo(() => {
+    if (!storeJob) return initialJob;
+    return {
+      ...initialJob,
+      status: storeJob.status,
+      progress: storeJob.progress,
+      compressed_size: storeJob.compressed_size ?? initialJob.compressed_size,
+      compressed_width:
+        storeJob.compressed_width ?? initialJob.compressed_width,
+      compressed_height:
+        storeJob.compressed_height ?? initialJob.compressed_height,
+      reduction_percent:
+        storeJob.reduction_percent ?? initialJob.reduction_percent,
+      error_message: storeJob.error_message ?? initialJob.error_message,
+    };
+  }, [initialJob, storeJob]);
+
+  const isActive =
+    job.status === "uploading" ||
+    job.status === "queued" ||
+    job.status === "processing";
   const canDownload = job.status === "completed";
   const canRetry = job.status === "failed";
-  const psegments = { 0: "teal", 25: "orange", 90: "blue" } as const;
+
+  // Thumbnail URL: use local preview during upload, server URL once available
+  const thumbnailUrl = useMemo(() => {
+    const cachedPreview = getPreviewUrl(job.id);
+    if (job.status === "uploading") {
+      return cachedPreview;
+    }
+    // Once upload is complete, we can use server URL and clear the cache
+    if (cachedPreview) {
+      clearPreviewUrl(job.id);
+    }
+    return getOriginalUrl(job.id);
+  }, [job.id, job.status]);
+
+  // Segmented progress bar: uploading (0-25%), queued/processing (25-99%), complete (99-100%)
+  const psegments = { 0: "teal", 25: "orange" } as const;
 
   return (
     <Card
@@ -50,9 +95,9 @@ export function JobCard({ job, selected, onToggleSelect }: JobCardProps) {
         )}
 
         {/* Preview thumbnail */}
-        {canDownload && (
+        {thumbnailUrl && (
           <img
-            src={getOriginalUrl(job.id)}
+            src={thumbnailUrl}
             alt={job.original_filename}
             className="w-16 h-16 object-cover rounded flex-shrink-0"
           />
@@ -73,10 +118,12 @@ export function JobCard({ job, selected, onToggleSelect }: JobCardProps) {
               <SegmentedProgressBar
                 percent={job.progress}
                 segments={psegments}
-                className="h-2"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                {job.progress}% complete
+                {job.status === "uploading" && "Uploading..."}
+                {job.status === "queued" && "Waiting in queue..."}
+                {job.status === "processing" &&
+                  `Processing... ${Math.round(job.progress)}%`}
               </p>
             </div>
           )}
