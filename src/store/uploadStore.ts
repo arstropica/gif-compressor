@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import "crypto-randomuuid";
 
 import type { CompressionOptions } from "@/api/types";
 
