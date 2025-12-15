@@ -1,4 +1,9 @@
-export type JobStatus = "queued" | "processing" | "completed" | "failed";
+export type JobStatus =
+  | "uploading"
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed";
 
 export interface CompressionOptions {
   compression_level: number; // 1-200, default 75
@@ -26,6 +31,7 @@ export const DEFAULT_COMPRESSION_OPTIONS: CompressionOptions = {
 
 export interface Job {
   id: string;
+  session_id?: string;
   status: JobStatus;
   progress: number;
   original_filename: string;
@@ -45,7 +51,8 @@ export interface Job {
 }
 
 export interface JobFilters {
-  status?: JobStatus | "all";
+  status?: JobStatus | JobStatus[] | "all";
+  session_id?: string;
   filename?: string;
   start_date?: string;
   end_date?: string;
@@ -62,6 +69,7 @@ export interface ListJobsResponse {
 
 export interface JobCounts {
   all: number;
+  uploading: number;
   queued: number;
   processing: number;
   completed: number;
@@ -79,6 +87,23 @@ export interface UploadResponse {
     id: string;
     filename: string;
   }>;
+}
+
+export interface BatchCreateRequest {
+  files: Array<{
+    filename: string;
+    size: number;
+    options: CompressionOptions;
+  }>;
+  sessionId: string;
+}
+
+export interface BatchCreateResponse {
+  jobs: Array<{
+    id: string;
+    filename: string;
+  }>;
+  sessionId: string;
 }
 
 export interface WSMessage {

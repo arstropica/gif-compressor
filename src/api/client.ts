@@ -6,6 +6,8 @@ import type {
   QueueConfig,
   UploadResponse,
   CompressionOptions,
+  BatchCreateRequest,
+  BatchCreateResponse,
 } from "./types";
 
 const API_BASE = "/api";
@@ -57,13 +59,21 @@ export async function listJobs(
 ): Promise<ListJobsResponse> {
   const params = new URLSearchParams();
 
-  if (filters.status && filters.status !== "all")
-    params.set("status", filters.status);
+  if (filters.status && filters.status !== "all") {
+    if (Array.isArray(filters.status)) {
+      params.set("status", filters.status.join(","));
+    } else {
+      params.set("status", filters.status);
+    }
+  }
+  if (filters.session_id) params.set("session_id", filters.session_id);
   if (filters.filename) params.set("filename", filters.filename);
   if (filters.start_date) params.set("start_date", filters.start_date);
   if (filters.end_date) params.set("end_date", filters.end_date);
-  if (filters.limit) params.set("limit", String(filters.limit));
   if (filters.offset) params.set("offset", String(filters.offset));
+  if (filters.limit && filters.limit > 0) {
+    params.set("limit", String(filters.limit));
+  }
 
   const query = params.toString();
   return fetchApi<ListJobsResponse>(`/jobs${query ? `?${query}` : ""}`);
@@ -85,7 +95,69 @@ export async function getJobCounts(): Promise<JobCounts> {
   return fetchApi<JobCounts>("/jobs/counts");
 }
 
-// Upload API
+// Batch create jobs before upload
+export async function createJobsBatch(
+  request: BatchCreateRequest,
+): Promise<BatchCreateResponse> {
+  return fetchApi<BatchCreateResponse>("/jobs/batch", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+// Upload single file to existing job with progress callback
+export async function uploadJobFile(
+  jobId: string,
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<Job> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) {
+        const progress = Math.round((e.loaded / e.total) * 100);
+        onProgress(progress);
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const job = JSON.parse(xhr.responseText);
+          resolve(job);
+        } catch {
+          reject(new ApiError("Invalid response", xhr.status));
+        }
+      } else {
+        let error = "Upload failed";
+        try {
+          const data = JSON.parse(xhr.responseText);
+          error = data.error || error;
+        } catch {
+          // ignore parse errors
+        }
+        reject(new ApiError(error, xhr.status));
+      }
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new ApiError("Network error", 0));
+    });
+
+    xhr.addEventListener("abort", () => {
+      reject(new ApiError("Upload aborted", 0));
+    });
+
+    xhr.open("PUT", `${API_BASE}/jobs/${jobId}/upload`);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    xhr.send(formData);
+  });
+}
+
+// Upload API (legacy - for backwards compatibility)
 export async function uploadFiles(
   files: File[],
   globalOptions: CompressionOptions,
