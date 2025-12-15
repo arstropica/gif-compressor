@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 
-import { SCHEMA } from "./schema.js";
+import { SCHEMA_TABLE, SCHEMA_INDEXES } from "./schema.js";
 import type { Job, JobRow, JobFilters, CompressionOptions } from "../types.js";
 
 const DATABASE_PATH = process.env.DATABASE_PATH || "./data/gif-compressor.db";
@@ -16,17 +16,19 @@ if (!fs.existsSync(dbDir)) {
 const db = new Database(DATABASE_PATH);
 db.pragma("journal_mode = WAL");
 
-// Initialize schema
-db.exec(SCHEMA);
+// Initialize schema and indexes
+db.exec(SCHEMA_TABLE);
+db.exec(SCHEMA_INDEXES);
 
 function rowToJob(row: JobRow): Job {
   return {
     id: row.id,
+    session_id: row.session_id ?? undefined,
     status: row.status as Job["status"],
     progress: row.progress,
     original_filename: row.original_filename,
     original_size: row.original_size,
-    original_path: row.original_path,
+    original_path: row.original_path ?? undefined,
     original_width: row.original_width ?? undefined,
     original_height: row.original_height ?? undefined,
     options: JSON.parse(row.options) as CompressionOptions,
@@ -43,26 +45,42 @@ function rowToJob(row: JobRow): Job {
   };
 }
 
-export function createJob(
-  id: string,
-  filename: string,
-  size: number,
-  filePath: string,
-  options: CompressionOptions,
-  width?: number,
-  height?: number,
-  expiresAt?: string,
-): Job {
+export interface CreateJobParams {
+  id: string;
+  filename: string;
+  size: number;
+  options: CompressionOptions;
+  sessionId?: string;
+  filePath?: string;
+  width?: number;
+  height?: number;
+  expiresAt?: string;
+}
+
+export function createJob(params: CreateJobParams): Job {
+  const {
+    id,
+    filename,
+    size,
+    options,
+    sessionId,
+    filePath,
+    width,
+    height,
+    expiresAt,
+  } = params;
+
   const stmt = db.prepare(`
-    INSERT INTO jobs (id, original_filename, original_size, original_path, original_width, original_height, options, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO jobs (id, session_id, original_filename, original_size, original_path, original_width, original_height, options, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run(
     id,
+    sessionId ?? null,
     filename,
     size,
-    filePath,
+    filePath ?? null,
     width ?? null,
     height ?? null,
     JSON.stringify(options),
@@ -103,8 +121,19 @@ export function listJobs(filters: JobFilters = {}): {
   const params: (string | number)[] = [];
 
   if (filters.status && filters.status !== "all") {
-    conditions.push("status = ?");
-    params.push(filters.status);
+    if (Array.isArray(filters.status)) {
+      const placeholders = filters.status.map(() => "?").join(", ");
+      conditions.push(`status IN (${placeholders})`);
+      params.push(...filters.status);
+    } else {
+      conditions.push("status = ?");
+      params.push(filters.status);
+    }
+  }
+
+  if (filters.session_id) {
+    conditions.push("session_id = ?");
+    params.push(filters.session_id);
   }
 
   if (filters.filename) {
@@ -153,6 +182,7 @@ export function getJobCounts(): Record<string, number> {
   const stmt = db.prepare(`
     SELECT
       COUNT(*) as all_count,
+      SUM(CASE WHEN status = 'uploading' THEN 1 ELSE 0 END) as uploading,
       SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) as queued,
       SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
@@ -164,6 +194,7 @@ export function getJobCounts(): Record<string, number> {
 
   return {
     all: row.all_count,
+    uploading: row.uploading,
     queued: row.queued,
     processing: row.processing,
     completed: row.completed,

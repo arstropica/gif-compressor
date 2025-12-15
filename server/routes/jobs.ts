@@ -1,18 +1,170 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
+import type { UploadedFile } from "express-fileupload";
+import fs from "fs";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
 
 import * as db from "../db/client.js";
 import { cleanupJobFiles } from "../services/cleanup.js";
+import { getGifInfo } from "../services/compression.js";
 import { compressionQueue } from "../services/queue.js";
-import type { JobFilters } from "../types.js";
+import type { JobFilters, CompressionOptions } from "../types.js";
 
 const router = Router();
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || "104857600", 10);
+
+// Ensure upload directory exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+interface BatchCreateRequest {
+  files: Array<{
+    filename: string;
+    size: number;
+    options: CompressionOptions;
+  }>;
+  sessionId: string;
+}
+
+// Upload file to existing job
+router.put("/:id/upload", async (req: Request, res: Response) => {
+  try {
+    const jobId = req.params.id;
+    const job = db.getJob(jobId);
+
+    if (!job) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
+    if (job.status !== "uploading") {
+      return res.status(400).json({ error: "Job is not in uploading state" });
+    }
+
+    if (!req.files || !req.files.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const file = req.files.file as UploadedFile;
+
+    // Validate file type
+    if (file.mimetype !== "image/gif") {
+      return res.status(400).json({ error: "Not a GIF file" });
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return res.status(400).json({
+        error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`,
+      });
+    }
+
+    const ext = path.extname(file.name);
+    const uploadPath = path.join(UPLOAD_DIR, `${jobId}${ext}`);
+
+    // Move file to upload directory
+    await file.mv(uploadPath);
+
+    // Get GIF dimensions
+    const info = getGifInfo(uploadPath);
+
+    // Update job with file info and move to queued status
+    db.updateJob(jobId, {
+      status: "uploading",
+      original_path: uploadPath,
+      original_width: info.width,
+      original_height: info.height,
+    });
+
+    // Publish status update via Redis
+    await compressionQueue.publishUpdate(jobId, {
+      status: "uploading",
+      progress: 100,
+    });
+
+    // Add to compression queue
+    await compressionQueue.add(jobId);
+
+    const updatedJob = db.getJob(jobId);
+    console.log(`[Jobs] Upload complete for job ${jobId}, added to queue`);
+
+    res.json(updatedJob);
+  } catch (err) {
+    console.error("[Jobs] Upload error:", err);
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+// Create multiple jobs before upload (batch provisioning)
+router.post("/batch", (req: Request, res: Response) => {
+  try {
+    const { files, sessionId } = req.body as BatchCreateRequest;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: "No files specified" });
+    }
+
+    if (!sessionId) {
+      return res.status(400).json({ error: "Session ID is required" });
+    }
+
+    const createdJobs: Array<{ id: string; filename: string }> = [];
+
+    for (const file of files) {
+      if (!file.filename || !file.size || !file.options) {
+        continue;
+      }
+
+      const jobId = uuidv4();
+
+      // Create job in "uploading" status (default) without file path
+      db.createJob({
+        id: jobId,
+        filename: file.filename,
+        size: file.size,
+        options: file.options,
+        sessionId,
+      });
+
+      createdJobs.push({ id: jobId, filename: file.filename });
+      console.log(`[Jobs] Created batch job ${jobId} for ${file.filename}`);
+    }
+
+    if (createdJobs.length === 0) {
+      return res.status(400).json({ error: "No valid files to process" });
+    }
+
+    res.status(201).json({
+      jobs: createdJobs,
+      sessionId,
+    });
+  } catch (err) {
+    console.error("[Jobs] Batch create error:", err);
+    res.status(500).json({ error: "Failed to create jobs" });
+  }
+});
 
 // List jobs with filters
 router.get("/", (req: Request, res: Response) => {
   try {
+    // Parse status - can be single value, comma-separated, or "all"
+    let status: JobFilters["status"] = undefined;
+    if (req.query.status) {
+      const statusStr = req.query.status as string;
+      if (statusStr === "all") {
+        status = "all";
+      } else if (statusStr.includes(",")) {
+        status = statusStr.split(",") as JobFilters["status"];
+      } else {
+        status = statusStr as JobFilters["status"];
+      }
+    }
+
     const filters: JobFilters = {
-      status: req.query.status as JobFilters["status"],
+      status,
+      session_id: req.query.session_id as string,
       filename: req.query.filename as string,
       start_date: req.query.start_date as string,
       end_date: req.query.end_date as string,

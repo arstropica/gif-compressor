@@ -19,11 +19,12 @@ export interface CompressionOptions {
 
 export interface Job {
   id: string;
+  session_id?: string;
   status: JobStatus;
   progress: number;
   original_filename: string;
   original_size: number;
-  original_path: string;
+  original_path?: string;
   original_width?: number;
   original_height?: number;
   options: CompressionOptions;
@@ -41,11 +42,12 @@ export interface Job {
 
 export interface JobRow {
   id: string;
+  session_id: string | null;
   status: string;
   progress: number;
   original_filename: string;
   original_size: number;
-  original_path: string;
+  original_path: string | null;
   original_width: number | null;
   original_height: number | null;
   options: string; // JSON string
@@ -62,7 +64,8 @@ export interface JobRow {
 }
 
 export interface JobFilters {
-  status?: JobStatus | "all";
+  status?: JobStatus | JobStatus[] | "all";
+  session_id?: string;
   filename?: string;
   start_date?: string;
   end_date?: string;

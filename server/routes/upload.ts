@@ -96,15 +96,15 @@ router.post("/", async (req: Request, res: Response) => {
         const options = perFileOptions[file.name] || globalOptions;
 
         // Create job in database
-        const job = db.createJob(
-          jobId,
-          file.name,
-          file.size,
-          uploadPath,
+        const job = db.createJob({
+          id: jobId,
+          filename: file.name,
+          size: file.size,
+          filePath: uploadPath,
           options,
-          info.width,
-          info.height,
-        );
+          width: info.width,
+          height: info.height,
+        });
 
         // Add to compression queue
         await compressionQueue.add(jobId);
