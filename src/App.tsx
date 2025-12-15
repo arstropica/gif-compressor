@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { Header } from "@/components/layout/Header";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { HistoryPage } from "@/pages/HistoryPage";
 import { HomePage } from "@/pages/HomePage";
+import { useJobStore } from "@/store/jobStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,6 +20,12 @@ const queryClient = new QueryClient({
 function AppContent() {
   // Initialize WebSocket for real-time updates
   useWebSocket();
+
+  // Initialize session once at app level
+  const initSessionAsync = useJobStore((state) => state.initSessionAsync);
+  useEffect(() => {
+    initSessionAsync();
+  }, [initSessionAsync]);
 
   return (
     <div className="min-h-screen bg-background">
