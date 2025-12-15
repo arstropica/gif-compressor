@@ -133,6 +133,8 @@ export default [
       /* -------------------------
        * Prettier
        * ------------------------- */
+      "comma-dangle": "off",
+      "@typescript-eslint/comma-dangle": "off",
       "prettier/prettier": "error",
     },
   },
