@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { listJobs } from "@/api/client";
+import { deleteJob, listJobs } from "@/api/client";
 import type { Job, JobStatus, JobStatusUpdate } from "@/api/types";
 
 export interface JobState {
@@ -29,6 +29,9 @@ interface JobStore {
   // Current session ID
   sessionId: string | null;
 
+  // Whether session has been initialized (prevents repeated GC)
+  initialized: boolean;
+
   // Actions
   setJob: (jobId: string, state: JobState) => void;
   setJobs: (jobs: Job[]) => void;
@@ -50,6 +53,7 @@ export const useJobStore = create<JobStore>()(
     (set, get) => ({
       jobs: {},
       sessionId: null,
+      initialized: false,
 
       setJob: (jobId, state) =>
         set((s) => ({
@@ -127,6 +131,11 @@ export const useJobStore = create<JobStore>()(
       initSessionAsync: async () => {
         const state = get();
 
+        // Only run initialization once per app lifecycle
+        if (state.initialized) {
+          return state.sessionId!;
+        }
+
         // If we have a persisted session, check server for active jobs
         if (state.sessionId) {
           try {
@@ -135,10 +144,36 @@ export const useJobStore = create<JobStore>()(
               status: ["uploading", "queued", "processing"],
             });
 
-            if (jobs.length > 0) {
+            // Separate stale jobs from active processing jobs
+            // "uploading" and "queued" jobs are stale - uploading was interrupted,
+            // queued jobs were abandoned before processing started
+            const staleJobs = jobs.filter(
+              (job) => job.status === "uploading" || job.status === "queued",
+            );
+            const activeJobs = jobs.filter(
+              (job) => job.status === "processing",
+            );
+
+            // Garbage collect stale jobs - uploading jobs had their uploads interrupted,
+            // queued jobs were abandoned before processing started
+            for (const job of staleJobs) {
+              try {
+                await deleteJob(job.id);
+                console.log(
+                  `[JobStore] Garbage collected stale job (${job.status}): ${job.original_filename}`,
+                );
+              } catch (err) {
+                console.error(
+                  `[JobStore] Failed to delete stale job ${job.id}:`,
+                  err,
+                );
+              }
+            }
+
+            if (activeJobs.length > 0) {
               // Populate store with active jobs and keep session
               const jobsMap: Record<string, JobState> = {};
-              for (const job of jobs) {
+              for (const job of activeJobs) {
                 jobsMap[job.id] = {
                   id: job.id,
                   status: job.status,
@@ -154,7 +189,7 @@ export const useJobStore = create<JobStore>()(
                   error_message: job.error_message,
                 };
               }
-              set({ jobs: jobsMap });
+              set({ jobs: jobsMap, initialized: true });
               return state.sessionId;
             }
           } catch (err) {
@@ -164,7 +199,7 @@ export const useJobStore = create<JobStore>()(
 
         // No active jobs or no session, create new session
         const newSessionId = uuidv4();
-        set({ sessionId: newSessionId, jobs: {} });
+        set({ sessionId: newSessionId, jobs: {}, initialized: true });
         return newSessionId;
       },
 

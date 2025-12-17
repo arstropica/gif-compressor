@@ -6,7 +6,8 @@ import { Header } from "@/components/layout/Header";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { HistoryPage } from "@/pages/HistoryPage";
 import { HomePage } from "@/pages/HomePage";
-import { useJobStore } from "@/store/jobStore";
+import { useJobStore, useHasActiveJobs } from "@/store/jobStore";
+import { useUploadStore } from "@/store/uploadStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,6 +27,26 @@ function AppContent() {
   useEffect(() => {
     initSessionAsync();
   }, [initSessionAsync]);
+
+  // Warn user when navigating away during active uploads
+  const hasActiveJobs = useHasActiveJobs();
+  const pendingFiles = useUploadStore((state) => state.files);
+  const hasUploadsInProgress = hasActiveJobs || pendingFiles.length > 0;
+
+  useEffect(() => {
+    if (!hasUploadsInProgress) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers ignore custom messages but still show a generic prompt
+      e.returnValue =
+        "You have uploads in progress. Are you sure you want to leave?";
+      return e.returnValue;
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUploadsInProgress]);
 
   return (
     <div className="min-h-screen bg-background">
