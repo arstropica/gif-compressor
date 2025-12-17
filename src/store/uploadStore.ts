@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 
 import type { CompressionOptions } from "@/api/types";
+import { extractFirstFrame } from "@/lib/utils";
 
 export interface PendingFile {
   id: string;
@@ -15,7 +16,7 @@ interface UploadState {
   isUploading: boolean;
   selectedIds: Set<string>;
 
-  addFiles: (files: File[]) => void;
+  addFiles: (files: File[]) => Promise<void>;
   removeFile: (id: string) => void;
   clearFiles: (revokeUrls?: boolean) => void;
   setFileOptions: (id: string, options: CompressionOptions | null) => void;
@@ -31,20 +32,28 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   isUploading: false,
   selectedIds: new Set(),
 
-  addFiles: (files) =>
+  addFiles: async (files) => {
+    const entries: PendingFile[] = [];
+
+    for (const file of files) {
+      if (file.type === "image/gif") {
+        const buffer = await file.arrayBuffer();
+        const frameBlob = await extractFirstFrame(buffer);
+        const url = URL.createObjectURL(frameBlob);
+
+        entries.push({
+          id: uuidv4(),
+          file,
+          preview: url,
+          options: null,
+        });
+      }
+    }
+
     set((state) => ({
-      files: [
-        ...state.files,
-        ...files
-          .filter((f) => f.type === "image/gif")
-          .map((file) => ({
-            id: uuidv4(),
-            file,
-            preview: URL.createObjectURL(file),
-            options: null,
-          })),
-      ],
-    })),
+      files: [...state.files, ...entries],
+    }));
+  },
 
   removeFile: (id) =>
     set((state) => {

@@ -1,4 +1,5 @@
 import { type ClassValue, clsx } from "clsx";
+import { parseGIF, decompressFrames } from "gifuct-js";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
@@ -52,4 +53,31 @@ export function formatPercentage(value: number, decimals = 1): string {
 export function formatDimensions(width?: number, height?: number): string {
   if (!width || !height) return "Unknown";
   return `${width} × ${height}`;
+}
+
+export function extractFirstFrame(buffer: ArrayBuffer): Promise<Blob> {
+  const gif = parseGIF(buffer);
+  const frames = decompressFrames(gif, true);
+  const firstFrame = frames[0];
+
+  const { width, height } = gif.lsd;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+
+  const imageData = new ImageData(
+    new Uint8ClampedArray(firstFrame.patch),
+    firstFrame.dims.width,
+    firstFrame.dims.height,
+  );
+
+  // Handle frame offset (some GIFs have frames smaller than canvas)
+  ctx.putImageData(imageData, firstFrame.dims.left, firstFrame.dims.top);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      resolve(blob!);
+    }, "image/png");
+  });
 }
