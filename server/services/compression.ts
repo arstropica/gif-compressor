@@ -82,23 +82,15 @@ export async function compressGif(
     args.push("--unoptimize");
   }
 
-  // Frame dropping
+  // Frame dropping - use frame selection (input file + frame selectors)
+  // Must add input file BEFORE frame selectors
+  let frameSelectors: string[] = [];
   if (options.drop_frames !== "none") {
-    // Delete frames based on pattern
-    // n2 = keep every 2nd frame (delete odd frames)
-    // n3 = keep every 3rd frame
-    // n4 = keep every 4th frame
+    // n2 = keep every 2nd frame, n3 = keep every 3rd frame, etc.
     const n = parseInt(options.drop_frames.slice(1), 10);
-    // Generate frame deletion pattern - delete all frames except every nth
-    const info = getGifInfo(inputPath);
-    const framesToDelete: string[] = [];
-    for (let i = 0; i < info.frames; i++) {
-      if ((i + 1) % n !== 0) {
-        framesToDelete.push(`#${i}`);
-      }
-    }
-    if (framesToDelete.length > 0 && framesToDelete.length < info.frames) {
-      args.push("--delete", framesToDelete.join(" "));
+    // Keep frames where index % n == (n-1): n2 keeps 1,3,5..., n3 keeps 2,5,8...
+    for (let i = n - 1; i < originalInfo.frames; i += n) {
+      frameSelectors.push(`#${i}`);
     }
   }
 
@@ -148,8 +140,16 @@ export async function compressGif(
     }
   }
 
-  // Input and output
-  args.push("-o", outputPath, inputPath);
+  // Input file (must come before frame selectors)
+  args.push(inputPath);
+
+  // Frame selectors (must come after input file)
+  if (frameSelectors.length > 0) {
+    args.push(...frameSelectors);
+  }
+
+  // Output
+  args.push("-o", outputPath);
 
   // Report initial progress
   onProgress?.(10);
