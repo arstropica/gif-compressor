@@ -62,6 +62,7 @@ export async function compressGif(
   inputPath: string,
   options: CompressionOptions,
   onProgress?: (progress: number) => void,
+  predictedMs?: number,
 ): Promise<CompressResult> {
   const outputPath = path.join(OUTPUT_DIR, `${uuidv4()}.gif`);
 
@@ -162,17 +163,24 @@ export async function compressGif(
       stderr += data.toString();
     });
 
-    // Simulate progress since gifsicle doesn't provide it
+    // Simulate progress using predicted processing time
     let progressInterval: NodeJS.Timeout | null = null;
     let currentProgress = 10;
+    const startTime = Date.now();
 
-    const { interval, increment } = estimateProgress(originalInfo, options);
+    // Use prediction to simulate progress (10% to 99% over predicted duration)
+    const estimatedDuration = predictedMs || 2000; // Default 2s if no prediction
+    const UPDATE_INTERVAL = 100; // Update every 100ms
+
     progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      // Progress from 10 to 99 based on elapsed/predicted ratio
+      const progressRatio = Math.min(elapsed / estimatedDuration, 1);
+      currentProgress = 10 + progressRatio * 89; // 10 + (0 to 1) * 89 = 10 to 99
       if (currentProgress < 99) {
-        currentProgress = Math.min(99, currentProgress + increment);
         onProgress?.(Math.round(currentProgress));
       }
-    }, interval);
+    }, UPDATE_INTERVAL);
 
     proc.on("close", (code) => {
       if (progressInterval) {
@@ -212,74 +220,4 @@ function getFilesizeInBytes(filePath: string): number {
   const stats = fs.statSync(filePath);
   const fileSizeInBytes = stats.size;
   return fileSizeInBytes;
-}
-
-// TODO: Tune these parameters based on real-world testing
-export function estimateProgress(
-  info: GifInfo,
-  options: CompressionOptions,
-): { interval: number; increment: number } {
-  const frames = info.frames;
-
-  // --- 1. Compute final dimensions (same logic as your pipeline) ---
-  let width = info.width;
-  let height = info.height;
-
-  if (options.resize_enabled) {
-    if (options.target_width && options.target_width < width) {
-      const scale = options.target_width / width;
-      width = options.target_width;
-      height = Math.round(height * scale);
-    } else if (options.target_height && options.target_height < height) {
-      const scale = options.target_height / height;
-      height = options.target_height;
-      width = Math.round(width * scale);
-    }
-  }
-
-  // --- 2. Base pixel work ---
-  const pixelWork = frames * width * height;
-
-  // --- 3. Lossy amplifies per-frame cost strongly ---
-  const lossyFramePenalty =
-    1 + Math.pow(options.compression_level / 100, 1.2) * 3.0;
-
-  // --- 4. Additional per-frame overhead ---
-  let frameOverhead = 3_000_000 * frames * lossyFramePenalty;
-
-  if (options.optimize_transparency) {
-    frameOverhead *= 1.15;
-  }
-
-  if (options.undo_optimizations) {
-    frameOverhead *= 1.25;
-  }
-
-  if (options.reduce_colors && options.number_of_colors < 256) {
-    frameOverhead *= 1 + ((256 - options.number_of_colors) / 256) * 0.5;
-  }
-
-  // --- 5. Total effective work ---
-  const effectiveWork = pixelWork + frameOverhead;
-
-  // --- 6. Map work → interval (inverse, smooth, unbounded) ---
-  const BASE_WORK = 12_000_000; // ~1 second baseline
-  const MIN_INTERVAL = 30; // don't spam the UI
-  const MIN_INCREMENT = 0.15;
-  const MAX_INCREMENT = 5.0;
-  const SCALE = 15; // ms per log2 step
-
-  const interval = Math.round(
-    Math.max(
-      MIN_INTERVAL + SCALE * Math.log2(effectiveWork / BASE_WORK + 1),
-      MIN_INTERVAL,
-    ),
-  );
-
-  const increment = Math.max(
-    MIN_INCREMENT,
-    Math.min(MAX_INCREMENT, BASE_WORK / effectiveWork),
-  );
-
-  return { interval, increment };
 }

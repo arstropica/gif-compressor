@@ -2,6 +2,7 @@ import Redis from "ioredis";
 import PQueue from "p-queue";
 
 import { compressGif, getGifInfo } from "./compression.js";
+import { predictionService } from "./prediction.js";
 import * as db from "../db/client.js";
 import type { JobStatus, JobStatusUpdate } from "../types.js";
 
@@ -84,6 +85,10 @@ class CompressionQueue {
         });
       }
 
+      // Get predicted processing time for progress estimation
+      const predictedMs = predictionService.predict(originalInfo, job.options);
+      const startTime = Date.now();
+
       // Run compression
       const result = await compressGif(
         job.original_path,
@@ -96,6 +101,18 @@ class CompressionQueue {
             progress: totalProgress,
           });
         },
+        predictedMs,
+      );
+
+      // Calculate actual processing duration
+      const processingDurationMs = Date.now() - startTime;
+
+      // Record sample for model learning
+      predictionService.recordSample(
+        jobId,
+        originalInfo,
+        job.options,
+        processingDurationMs,
       );
 
       // Calculate reduction percentage
