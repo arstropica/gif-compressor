@@ -1,0 +1,65 @@
+{
+  "intercept": 0.9360754035217183,
+  "coefficients": {
+    "total_pixels": -0.09154073469143947,
+    "frames": 0.18154254718845153,
+    "file_size_bytes": 0.28904021775772604,
+    "target_width": 0.2728310071942637,
+    "target_height": 0.2728310071935687,
+    "number_of_colors": 0.0257227767433144,
+    "compression_level": 0.06588768593684896,
+    "reduce_colors": 0.01595597701652423,
+    "optimize_transparency": 0.17216177562836676,
+    "undo_optimizations": -5.3989317371873215e-05,
+    "drop_frames_n2": 0.029718209568249634,
+    "drop_frames_n3": -0.15395908697935928,
+    "drop_frames_n4": -0.2734762663231429,
+    "drop_frames_none": 0.39771714371294936
+  },
+  "scaler": {
+    "mean": {
+      "total_pixels": 12500992.0,
+      "frames": 109.0,
+      "file_size_bytes": 11088493.0,
+      "target_width": 186.66666666666666,
+      "target_height": 186.66666666666666,
+      "number_of_colors": 147.2,
+      "compression_level": 85.71428571428571,
+      "reduce_colors": 0.8,
+      "optimize_transparency": 0.5,
+      "undo_optimizations": 0.5
+    },
+    "scale": {
+      "total_pixels": 14835148.817582114,
+      "frames": 59.38013135721409,
+      "file_size_bytes": 11791007.12019136,
+      "target_width": 137.5338342210947,
+      "target_height": 137.5338342210947,
+      "number_of_colors": 94.06040612287404,
+      "compression_level": 65.27023886606095,
+      "reduce_colors": 0.4,
+      "optimize_transparency": 0.5,
+      "undo_optimizations": 0.5
+    }
+  },
+  "metadata": {
+    "samples": 33600,
+    "mae_cv_log": 0.2577039092689209,
+    "features": [
+      "total_pixels",
+      "frames",
+      "file_size_bytes",
+      "target_width",
+      "target_height",
+      "number_of_colors",
+      "compression_level",
+      "reduce_colors",
+      "optimize_transparency",
+      "undo_optimizations",
+      "drop_frames_n2",
+      "drop_frames_n3",
+      "drop_frames_n4",
+      "drop_frames_none"
+    ]
+  }
+}
