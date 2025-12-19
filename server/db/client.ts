@@ -2,7 +2,13 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 
-import { SCHEMA_TABLE, SCHEMA_INDEXES } from "./schema.js";
+import {
+  SCHEMA_TABLE,
+  SCHEMA_INDEXES,
+  SCHEMA_PREDICTION_SAMPLES,
+  SCHEMA_PREDICTION_RESIDUALS,
+  SCHEMA_PREDICTION_INDEXES,
+} from "./schema.js";
 import type { Job, JobRow, JobFilters, CompressionOptions } from "../types.js";
 
 const DATABASE_PATH = process.env.DATABASE_PATH || "./data/gif-compressor.db";
@@ -19,6 +25,9 @@ db.pragma("journal_mode = WAL");
 // Initialize schema and indexes
 db.exec(SCHEMA_TABLE);
 db.exec(SCHEMA_INDEXES);
+db.exec(SCHEMA_PREDICTION_SAMPLES);
+db.exec(SCHEMA_PREDICTION_RESIDUALS);
+db.exec(SCHEMA_PREDICTION_INDEXES);
 
 function rowToJob(row: JobRow): Job {
   return {
@@ -218,6 +227,117 @@ export function getQueuedJobs(): Job[] {
   );
   const rows = stmt.all() as JobRow[];
   return rows.map(rowToJob);
+}
+
+// ============================================
+// Prediction model functions
+// ============================================
+
+export interface PredictionSample {
+  jobId: string;
+  frames: number;
+  width: number;
+  height: number;
+  fileSize: number;
+  totalPixels: number;
+  targetWidth: number;
+  targetHeight: number;
+  compressionLevel: number;
+  dropFrames: string;
+  reduceColors: boolean;
+  numberOfColors: number;
+  optimizeTransparency: boolean;
+  undoOptimizations: boolean;
+  elapsedMs: number;
+}
+
+export function insertPredictionSample(sample: PredictionSample): void {
+  const stmt = db.prepare(`
+    INSERT INTO prediction_samples (
+      job_id, frames, width, height, file_size, total_pixels,
+      target_width, target_height, compression_level, drop_frames,
+      reduce_colors, number_of_colors, optimize_transparency,
+      undo_optimizations, elapsed_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    sample.jobId,
+    sample.frames,
+    sample.width,
+    sample.height,
+    sample.fileSize,
+    sample.totalPixels,
+    sample.targetWidth,
+    sample.targetHeight,
+    sample.compressionLevel,
+    sample.dropFrames,
+    sample.reduceColors ? 1 : 0,
+    sample.numberOfColors,
+    sample.optimizeTransparency ? 1 : 0,
+    sample.undoOptimizations ? 1 : 0,
+    sample.elapsedMs,
+  );
+}
+
+export function getPredictionSampleCount(): number {
+  const stmt = db.prepare("SELECT COUNT(*) as count FROM prediction_samples");
+  const row = stmt.get() as { count: number };
+  return row.count;
+}
+
+export interface ResidualEntry {
+  featureKey: string;
+  ema: number;
+  count: number;
+}
+
+export function getResidual(featureKey: string): ResidualEntry | null {
+  const stmt = db.prepare(
+    "SELECT feature_key, ema, count FROM prediction_residuals WHERE feature_key = ?",
+  );
+  const row = stmt.get(featureKey) as
+    | { feature_key: string; ema: number; count: number }
+    | undefined;
+
+  return row
+    ? { featureKey: row.feature_key, ema: row.ema, count: row.count }
+    : null;
+}
+
+export function upsertResidual(featureKey: string, ema: number, count: number): void {
+  const stmt = db.prepare(`
+    INSERT INTO prediction_residuals (feature_key, ema, count, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(feature_key) DO UPDATE SET
+      ema = excluded.ema,
+      count = excluded.count,
+      updated_at = datetime('now')
+  `);
+  stmt.run(featureKey, ema, count);
+}
+
+export function getAllResiduals(): ResidualEntry[] {
+  const stmt = db.prepare(
+    "SELECT feature_key, ema, count FROM prediction_residuals",
+  );
+  const rows = stmt.all() as { feature_key: string; ema: number; count: number }[];
+
+  return rows.map((row) => ({
+    featureKey: row.feature_key,
+    ema: row.ema,
+    count: row.count,
+  }));
+}
+
+export function getResidualStats(): { totalSamples: number; featureCount: number } {
+  const sampleCount = getPredictionSampleCount();
+  const featureStmt = db.prepare(
+    "SELECT COUNT(*) as count FROM prediction_residuals",
+  );
+  const { count: featureCount } = featureStmt.get() as { count: number };
+
+  return { totalSamples: sampleCount, featureCount };
 }
 
 export { db };
