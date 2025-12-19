@@ -29,6 +29,9 @@ RUN apk add --no-cache python3 make g++ && \
 # Copy built assets from builder
 COPY --from=builder /app/dist ./dist
 
+# Copy baseline model (pre-generated from training data)
+COPY server/model/baseline.json ./dist/server/model/baseline.json
+
 # Create directories for uploads/output/data
 RUN mkdir -p /app/uploads /app/output /app/data
 
