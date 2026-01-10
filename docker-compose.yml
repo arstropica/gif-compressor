@@ -25,6 +25,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - vision_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5050/api/health"]
@@ -39,12 +41,19 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - gif-redis-data:/data
+    networks:
+      - vision_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+networks:
+  vision_network:
+    name: ${DOCKER_NETWORK:-vision_network}
+    external: true
 
 volumes:
   gif-uploads:
